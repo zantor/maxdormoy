@@ -107,3 +107,14 @@ leaflet() %>%
              radius = 0.1 * sqrt(oneInterval$INTERVAL / pi),
              stroke = FALSE, fill = TRUE, fillColor = "grey30", fillOpacity = 0.5)
 
+
+# create street network ----
+
+class(lineRoad)
+centroLine <- st_coordinates(x = lineRoad)
+plot(centroLine$geometry)
+
+
+
+
+
