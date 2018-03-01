@@ -10,6 +10,7 @@ library(lubridate)
 library(sf)
 library(cartography)
 library(leaflet)
+library(reshape2)
 library(dplyr)
 
 options(scipen = 100000)
@@ -111,10 +112,22 @@ leaflet() %>%
 # create street network ----
 
 class(lineRoad)
-centroLine <- st_coordinates(x = lineRoad)
-plot(centroLine$geometry)
+centroLine <- as.data.frame(st_coordinates(x = lineRoad)) %>% 
+  mutate(X = formatC(X, digits = 4, drop0trailing = FALSE, format = "f"),
+         Y = formatC(Y, digits = 4, drop0trailing = FALSE, format = "f"),
+         KEY = paste(X, Y, sep = "_"))
 
+bibi <- dcast(data = centroLine, formula = KEY ~ L1)
 
+CollapseValues <- function(x) paste(x, collapse = ",")
 
+preEdges <- centroLine %>% 
+  group_by(KEY) %>% 
+  summarise(LINES = CollapseValues(L1))
+preEdgesSel <- preEdges[grepl(pattern = ",", x = preEdges$LINES), ]
+
+centroLineSel <- centroLine %>% filter(KEY %in% preEdgesSel$KEY) %>% 
+  group_by(L1) %>% 
+  summarise(n())
 
 
