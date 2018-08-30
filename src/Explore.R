@@ -2,6 +2,7 @@
 ##### Explore GPS tracks : 1st experiment #####
 ###############################################
 
+
 # load packages ----
 
 library(jsonlite)
@@ -10,6 +11,7 @@ library(sf)
 library(cartography)
 library(leaflet)
 library(reshape2)
+library(igraph)
 library(dplyr)
 
 options(scipen = 100000)
@@ -17,10 +19,10 @@ options(scipen = 100000)
 
 # load data ----
 
-allFiles <- list.files(path = "exp1 - 2017-12-16/data/Records-2017-12-16/")
+allFiles <- list.files(path = "DATA/Records-2017-12-16/")
 allNames <- gsub(x = allFiles, pattern = "_|-| |default|.json", replacement = "")
 allNamesCorr <- gsub(x = allNames, pattern = "[[:digit:]]", replacement = "")
-lineRoad <- st_read(dsn = "exp1 - 2017-12-16/data/basemap/troncon_dormoy.shp", stringsAsFactors = FALSE, crs = 2154)
+lineRoad <- st_read(dsn = "DATA/basemap/troncon_dormoy.shp", stringsAsFactors = FALSE, crs = 2154)
 
 # library(mapview)
 # library(mapedit)
@@ -28,11 +30,12 @@ lineRoad <- st_read(dsn = "exp1 - 2017-12-16/data/basemap/troncon_dormoy.shp", s
 # boxSelection <- boxSelection$finished
 # saveRDS(boxSelection, file = "bboxdormoy.Rds")
 
-bboxDormoy <- readRDS(file = "exp1 - 2017-12-16/data/basemap/bboxdormoy.Rds") %>% st_transform(crs = 2154)
+bboxDormoy <- readRDS(file = "DATA/basemap/bboxdormoy.Rds") %>% st_transform(crs = 2154)
+
 
 # extract one JSON ----
 
-oneJson <- fromJSON(txt = "exp1 - 2017-12-16/data/Records-2017-12-16/default_Farrah_20171116-103915.json", 
+oneJson <- fromJSON(txt = "DATA/Records-2017-12-16/default_Farrah_20171116-103915.json", 
                     simplifyDataFrame = TRUE,
                     flatten = TRUE)
 dataJson <- oneJson$data
@@ -72,7 +75,7 @@ leaflet() %>%
 
 # make rectangular grid and intersect ----
 
-geoGrid <- st_make_grid(x = bboxDormoy, cellsize = 50, crs = 2154, what = "polygons")
+geoGrid <- st_make_grid(x = bboxDormoy, cellsize = 120, crs = 2154, what = "polygons")
 oneGrid <- st_sf(IDGRID = seq(1, length(geoGrid), 1),
                  geometry = geoGrid)
 
@@ -111,21 +114,37 @@ leaflet() %>%
 
 class(lineRoad)
 centroLine <- as.data.frame(st_coordinates(x = lineRoad)) %>% 
-  mutate(X = formatC(X, digits = 4, drop0trailing = FALSE, format = "f"),
-         Y = formatC(Y, digits = 4, drop0trailing = FALSE, format = "f"),
-         KEY = paste(X, Y, sep = "_"))
-
-bibi <- dcast(data = centroLine, formula = KEY ~ L1)
-
-CollapseValues <- function(x) paste(x, collapse = ",")
-
-preEdges <- centroLine %>% 
-  group_by(KEY) %>% 
-  summarise(LINES = CollapseValues(L1))
-preEdgesSel <- preEdges[grepl(pattern = ",", x = preEdges$LINES), ]
-
-centroLineSel <- centroLine %>% filter(KEY %in% preEdgesSel$KEY) %>% 
-  group_by(L1) %>% 
-  summarise(n())
+  mutate(XROUND = formatC(X, digits = 3, drop0trailing = FALSE, format = "f"),
+         YROUND = formatC(Y, digits = 3, drop0trailing = FALSE, format = "f"),
+         KEY = paste(XROUND, YROUND, sep = "_"))
 
 
+
+centroLine$DUP1 <- !duplicated(centroLine$L1)
+centroLine$DUP2 <- rev(!duplicated(rev(centroLine$L1)))
+centroNodes <- centroLine %>% 
+  filter(DUP1 == TRUE | DUP2 == TRUE) %>% 
+  st_as_sf(coords = c("X", "Y"), crs = 2154)
+
+plot(lineRoad$geometry)
+plot(centroNodes$geometry, add = TRUE)
+
+edgeList <- centroNodes %>% st_set_geometry(NULL)
+edgeListOri <- edgeList$KEY[seq(1, nrow(edgeList)-1, by = 2)]
+edgeListDes <- edgeList$KEY[seq(2, nrow(edgeList), by = 2)]
+oriDes <- cbind(edgeListOri, edgeListDes) %>% as_data_frame()
+
+
+
+netRoad <- graph.data.frame(d = oriDes, directed = FALSE)
+summary(netRoad)
+V(netRoad)$X <- as.numeric(substr(V(netRoad)$name, 1, 10))
+V(netRoad)$Y <- as.numeric(substr(V(netRoad)$name, 12, 22))
+
+plot(netRoad,
+     vertex.label = NA,
+     vertex.size = 3,
+     vertex.color = "black",
+     edge.color = "firebrick",
+     edge.width = 2,
+     layout = cbind(V(netRoad)$X, V(netRoad)$Y))
